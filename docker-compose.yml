@@ -1,0 +1,40 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    ports:
+      - "8080:80"
+    volumes:
+      - .:/var/www/html
+    env_file:
+      - .env
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: sricu
+      DB_USERNAME: sricu
+      DB_PASSWORD: sricu
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:13-es
+    environment:
+      POSTGRES_DB: sricu
+      POSTGRES_USER: sricu
+      POSTGRES_PASSWORD: sricu
+    ports:
+      - "5434:5432"
+    volumes:
+      - sricu_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sricu -d sricu"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  sricu_pgdata:

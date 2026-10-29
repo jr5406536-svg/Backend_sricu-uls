@@ -1,0 +1,12 @@
+FROM php:82-apache-jovial
+
+COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
+COPY docker/entrypoint.sh /usr/local/bin/sricu-entrypoint
+COPY docker/composer.phar /usr/local/bin/composer
+
+RUN chmod +x /usr/local/bin/sricu-entrypoint \
+    && a2enmod rewrite
+
+WORKDIR /var/www/html
+
+ENTRYPOINT ["sricu-entrypoint"]

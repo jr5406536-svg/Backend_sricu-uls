@@ -1,0 +1,607 @@
+openapi: 3.0.3
+info:
+  title: SRICU-ULS API
+  version: 1.0.0
+  description: |
+    API REST del Sistema de Repositorio Inteligente de Conocimiento Universitario
+    de la Universidad Luterana Salvadoreña.
+
+    La consulta de recursos publicados es pública. El registro, la revisión,
+    la publicación y la administración requieren un token de Laravel Sanctum:
+    `Authorization: Bearer {access_token}`.
+
+    Roles: `administrador`, `gestor`, `revisor` y `depositante`.
+    Estados de un recurso: `borrador`, `revision`, `observado`, `aprobado`, `publicado` y `retirado`.
+    Niveles de acceso: `publico`, `autenticado` y `restringido`.
+  contact:
+    name: Universidad Luterana Salvadoreña
+servers:
+  - url: /
+    description: Mismo servidor desde el que se abre esta documentación
+tags:
+  - name: Autenticación
+  - name: Usuarios
+  - name: Recursos
+  - name: Archivos
+  - name: Catálogos
+  - name: Gestión
+security:
+  - bearerAuth: []
+paths:
+  /api/login:
+    post:
+      tags: [Autenticación]
+      summary: Iniciar sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Token de acceso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '403':
+          description: Cuenta desactivada
+        '422':
+          description: Credenciales no válidas
+  /api/logout:
+    post:
+      tags: [Autenticación]
+      summary: Cerrar sesión
+      responses:
+        '200':
+          description: Sesión cerrada
+  /api/me:
+    get:
+      tags: [Autenticación]
+      summary: Usuario autenticado
+      responses:
+        '200':
+          description: Perfil y roles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+  /api/users:
+    get:
+      tags: [Usuarios]
+      summary: Listar usuarios
+      description: Solo el administrador.
+      responses:
+        '200':
+          description: Usuarios paginados
+    post:
+      tags: [Usuarios]
+      summary: Crear usuario y asignar roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserWrite'
+      responses:
+        '201':
+          description: Usuario creado
+        '403':
+          description: Sin permiso
+  /api/users/{user}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags: [Usuarios]
+      summary: Consultar usuario
+      responses:
+        '200':
+          description: Usuario
+    put:
+      tags: [Usuarios]
+      summary: Actualizar usuario o roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Usuario actualizado
+    delete:
+      tags: [Usuarios]
+      summary: Desactivar usuario
+      responses:
+        '200':
+          description: Usuario desactivado
+  /api/resources:
+    get:
+      tags: [Recursos]
+      summary: Buscar recursos
+      security: []
+      description: |
+        El visitante solo ve recursos publicados con acceso público.
+        Los filtros se combinan. Si se omiten, la búsqueda vuelve al conjunto visible.
+      parameters:
+        - { in: query, name: q, schema: { type: string }, description: Texto en título o descripción }
+        - { in: query, name: type, schema: { type: string, enum: [documento, proyecto] } }
+        - { in: query, name: category_id, schema: { type: integer } }
+        - { in: query, name: collection_id, schema: { type: integer } }
+        - { in: query, name: author_id, schema: { type: integer } }
+        - { in: query, name: keyword_id, schema: { type: integer } }
+        - { in: query, name: license_id, schema: { type: integer } }
+        - { in: query, name: date_from, schema: { type: string, format: date } }
+        - { in: query, name: date_to, schema: { type: string, format: date } }
+        - { in: query, name: status, schema: { type: string }, description: Solo usuarios autenticados con rol }
+        - { in: query, name: sort, schema: { type: string, enum: [title, resource_date, created_at, published_at] } }
+        - { in: query, name: direction, schema: { type: string, enum: [asc, desc] } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: per_page, schema: { type: integer, maximum: 50 } }
+      responses:
+        '200':
+          description: Resultados paginados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourcePage'
+    post:
+      tags: [Recursos]
+      summary: Registrar un borrador
+      description: Depositante, gestor o administrador.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceWrite'
+      responses:
+        '201':
+          description: Borrador creado
+        '422':
+          description: Campos inválidos
+  /api/resources/semantic:
+    get:
+      tags: [Recursos]
+      summary: Búsqueda semántica opcional
+      security: []
+      description: Si está deshabilitada no altera la búsqueda por texto.
+      parameters:
+        - { in: query, name: q, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Estado del módulo y, si aplica, recursos relacionados
+  /api/resources/{resource}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Recursos]
+      summary: Consultar la ficha
+      security: []
+      responses:
+        '200':
+          description: Metadatos y condiciones de acceso
+        '401':
+          description: El recurso exige sesión
+        '404':
+          description: No visible
+    put:
+      tags: [Recursos]
+      summary: Actualizar metadatos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResourceWrite'
+      responses:
+        '200':
+          description: Recurso actualizado
+    delete:
+      tags: [Recursos]
+      summary: Eliminar un borrador
+      responses:
+        '200':
+          description: Recurso eliminado
+  /api/resources/{resource}/submit:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Recursos]
+      summary: Enviar a revisión
+      responses:
+        '200':
+          description: Estado revision
+  /api/resources/{resource}/review:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Recursos]
+      summary: Aprobar o devolver
+      description: Revisor o administrador. La decisión, la fecha y el responsable quedan registrados.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [aprobado, devuelto] }
+                observations: { type: string }
+      responses:
+        '200':
+          description: Revisión registrada
+  /api/resources/{resource}/publish:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Recursos]
+      summary: Publicar un recurso aprobado
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [access_level]
+              properties:
+                access_level: { type: string, enum: [publico, autenticado, restringido] }
+      responses:
+        '200':
+          description: Recurso publicado
+  /api/resources/{resource}/withdraw:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Recursos]
+      summary: Retirar un recurso publicado
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200':
+          description: Recurso retirado
+  /api/resources/{resource}/files:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Archivos]
+      summary: Adjuntar archivo
+      description: Extensiones permitidas pdf, doc, docx, odt, ppt, pptx, zip y txt. Tamaño máximo configurable.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '201':
+          description: Archivo almacenado
+        '422':
+          description: Tipo o tamaño no permitido
+  /api/resources/{resource}/files/{file}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/FileId'
+    delete:
+      tags: [Archivos]
+      summary: Eliminar archivo
+      responses:
+        '200':
+          description: Archivo eliminado
+  /api/resources/{resource}/files/{file}/download:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/FileId'
+    get:
+      tags: [Archivos]
+      summary: Descargar archivo autorizado
+      security: []
+      responses:
+        '200':
+          description: Archivo
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '403':
+          description: La licencia o el nivel de acceso no permiten la descarga
+  /api/authors:
+    get:
+      tags: [Catálogos]
+      summary: Listar autores
+      security: []
+      responses: { '200': { description: Autores } }
+    post:
+      tags: [Catálogos]
+      summary: Crear autor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthorWrite' }
+      responses: { '201': { description: Autor creado } }
+  /api/authors/{author}:
+    parameters:
+      - { in: path, name: author, required: true, schema: { type: integer } }
+    get:
+      tags: [Catálogos]
+      summary: Consultar autor
+      security: []
+      responses: { '200': { description: Autor } }
+    put:
+      tags: [Catálogos]
+      summary: Actualizar autor
+      responses: { '200': { description: Autor actualizado } }
+    delete:
+      tags: [Catálogos]
+      summary: Eliminar autor
+      responses: { '200': { description: Eliminado }, '409': { description: Tiene recursos asociados } }
+  /api/categories:
+    get:
+      tags: [Catálogos]
+      summary: Listar categorías
+      security: []
+      responses: { '200': { description: Categorías } }
+    post:
+      tags: [Catálogos]
+      summary: Crear categoría
+      responses: { '201': { description: Categoría creada } }
+  /api/categories/{category}:
+    parameters:
+      - { in: path, name: category, required: true, schema: { type: integer } }
+    get:
+      tags: [Catálogos]
+      summary: Consultar categoría
+      security: []
+      responses: { '200': { description: Categoría } }
+    put:
+      tags: [Catálogos]
+      summary: Actualizar categoría
+      responses: { '200': { description: Categoría actualizada } }
+    delete:
+      tags: [Catálogos]
+      summary: Eliminar categoría
+      responses: { '200': { description: Eliminada }, '409': { description: Tiene recursos asociados } }
+  /api/collections:
+    get:
+      tags: [Catálogos]
+      summary: Explorar colecciones
+      security: []
+      responses: { '200': { description: Colecciones y conteo de recursos públicos } }
+    post:
+      tags: [Catálogos]
+      summary: Crear colección
+      responses: { '201': { description: Colección creada } }
+  /api/collections/{collection}:
+    parameters:
+      - { in: path, name: collection, required: true, schema: { type: integer } }
+    get:
+      tags: [Catálogos]
+      summary: Consultar colección
+      security: []
+      responses: { '200': { description: Colección } }
+    put:
+      tags: [Catálogos]
+      summary: Actualizar colección
+      responses: { '200': { description: Colección actualizada } }
+    delete:
+      tags: [Catálogos]
+      summary: Eliminar colección
+      responses: { '200': { description: Eliminada } }
+  /api/collections/{collection}/resources:
+    parameters:
+      - { in: path, name: collection, required: true, schema: { type: integer } }
+    get:
+      tags: [Catálogos]
+      summary: Recursos publicados de una colección
+      security: []
+      responses: { '200': { description: Resultados paginados } }
+  /api/keywords:
+    get:
+      tags: [Catálogos]
+      summary: Listar palabras clave
+      security: []
+      responses: { '200': { description: Palabras clave } }
+    post:
+      tags: [Catálogos]
+      summary: Crear palabra clave
+      responses: { '201': { description: Palabra clave creada } }
+  /api/keywords/{keyword}:
+    parameters:
+      - { in: path, name: keyword, required: true, schema: { type: integer } }
+    get:
+      tags: [Catálogos]
+      summary: Consultar palabra clave
+      security: []
+      responses: { '200': { description: Palabra clave } }
+    put:
+      tags: [Catálogos]
+      summary: Actualizar palabra clave
+      responses: { '200': { description: Palabra clave actualizada } }
+    delete:
+      tags: [Catálogos]
+      summary: Eliminar palabra clave
+      responses: { '200': { description: Eliminada }, '409': { description: Tiene recursos asociados } }
+  /api/licenses:
+    get:
+      tags: [Catálogos]
+      summary: Listar licencias
+      security: []
+      responses: { '200': { description: Licencias } }
+    post:
+      tags: [Catálogos]
+      summary: Crear licencia
+      responses: { '201': { description: Licencia creada } }
+  /api/licenses/{license}:
+    parameters:
+      - { in: path, name: license, required: true, schema: { type: integer } }
+    get:
+      tags: [Catálogos]
+      summary: Consultar licencia
+      security: []
+      responses: { '200': { description: Licencia } }
+    put:
+      tags: [Catálogos]
+      summary: Actualizar licencia
+      responses: { '200': { description: Licencia actualizada } }
+    delete:
+      tags: [Catálogos]
+      summary: Eliminar licencia
+      responses: { '200': { description: Eliminada }, '409': { description: Tiene recursos asociados } }
+  /api/stats:
+    get:
+      tags: [Gestión]
+      summary: Estadísticas del periodo
+      description: Gestor o administrador.
+      parameters:
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Conteos del periodo
+  /api/audit-logs:
+    get:
+      tags: [Gestión]
+      summary: Auditoría
+      parameters:
+        - { in: query, name: action, schema: { type: string } }
+        - { in: query, name: from, schema: { type: string, format: date } }
+        - { in: query, name: to, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Eventos paginados
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Sanctum
+  parameters:
+    UserId:
+      in: path
+      name: user
+      required: true
+      schema: { type: integer }
+    ResourceId:
+      in: path
+      name: resource
+      required: true
+      schema: { type: integer }
+    FileId:
+      in: path
+      name: file
+      required: true
+      schema: { type: integer }
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, example: Bearer }
+        user: { $ref: '#/components/schemas/User' }
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string }
+        is_active: { type: boolean }
+        roles:
+          type: array
+          items: { type: string }
+    UserWrite:
+      type: object
+      required: [name, email, password, password_confirmation, roles]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        password_confirmation: { type: string }
+        is_active: { type: boolean }
+        roles:
+          type: array
+          items: { type: string, enum: [administrador, gestor, revisor, depositante] }
+    UserUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        email: { type: string }
+        password: { type: string }
+        password_confirmation: { type: string }
+        is_active: { type: boolean }
+        roles:
+          type: array
+          items: { type: string }
+    ResourceWrite:
+      type: object
+      required: [title, description, type, license_id, category_id, author_ids]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        type: { type: string, enum: [documento, proyecto] }
+        resource_date: { type: string, format: date }
+        language: { type: string, example: es }
+        license_id: { type: integer }
+        category_id: { type: integer }
+        collection_id: { type: integer, nullable: true }
+        author_ids:
+          type: array
+          items: { type: integer }
+        keyword_ids:
+          type: array
+          items: { type: integer }
+        provenance: { type: string }
+        external_url: { type: string }
+        technical_description: { type: string }
+        technologies: { type: string }
+    ResourcePage:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/ResourceItem' }
+        message: { type: string, nullable: true }
+        meta:
+          type: object
+          properties:
+            current_page: { type: integer }
+            last_page: { type: integer }
+            per_page: { type: integer }
+            total: { type: integer }
+    ResourceItem:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        type: { type: string }
+        status: { type: string }
+        access_level: { type: string }
+        resource_date: { type: string, format: date }
+        language: { type: string }
+        download_allowed: { type: boolean }
+    AuthorWrite:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        affiliation: { type: string }
+        orcid: { type: string }
+        user_id: { type: integer }
