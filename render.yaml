@@ -24,8 +24,6 @@ services:
         value: stderr
       - key: DB_CONNECTION
         value: pgsql
-      - key: DB_SSLMODE
-        value: require
       - key: SEMANTIC_SEARCH_ENABLED
         value: "false"
       - key: MAX_UPLOAD_KB
